@@ -1,26 +1,29 @@
-# Family Identity & Device Management Plan — Samba + Keycloak + MDM + Entra Integration
+# Family Identity & Device Management Plan — Samba + Keycloak + MDM + Entra Integration (Cloudflare Enabled)
 
 **Audience:** 5-person family; Apple-first with some Windows PCs.
 
-**Goal:** Build a self-hosted identity foundation (Samba AD + Keycloak) with MDM for device management, then extend it into Entra ID for cloud-linked SSO — without losing local control.
+**Goal:** Build a self-hosted identity foundation (Samba AD + Keycloak) with MDM for device management, protected behind Cloudflare’s WAF for public access, and extended into Entra ID for cloud-linked SSO — while retaining local Kerberos SSO inside the LAN.
 
-**Confidence levels:** Every section includes confidence estimates (High / Medium / Low).
+**Confidence levels:** Each section includes confidence estimates (High / Medium / Low).
 
 ---
 
 ## Phase 0 — Overview & Architecture
 
 **Core stack:**
-- **Samba AD** — local domain controller providing Kerberos, LDAP, and DNS.
+- **Samba AD** — local directory, Kerberos realm `HOME.TICKELL.US`, DNS `home.tickell.us`, NetBIOS `HOME`.
 - **Keycloak** — identity broker and IdP overlaying Samba.
-- **ManageEngine MDM** — to push profiles, Wi-Fi, VPN, and Kerberos SSO.
-- **Microsoft Entra ID** — optional cloud layer for SSO with Microsoft services.
+- **ManageEngine MDM** — pushes Wi‑Fi, VPN, and Kerberos SSO payloads.
+- **Cloudflare WAF** — secures public access to `id.tickell.us`.
+- **Microsoft Entra ID** — optional cloud ID extension for device registration and federation.
 
 **Flow summary:**
-1. Devices (macOS/Windows) join **Samba AD** → Kerberos realm `HOME.TICKELL.US`.
-2. **Keycloak** federates users from Samba via LDAP → provides OIDC/SAML SSO for apps.
-3. **MDM** delivers Wi-Fi/VPN/cert and Kerberos SSO payloads for Apple devices.
-4. **Entra ID** syncs user metadata (lightweight) and optionally registers devices.
+1. Devices (macOS/Windows) join **Samba AD (HOME.TICKELL.US)**.
+2. **Keycloak** federates users via LDAP from Samba.
+3. **MDM** manages configuration and SSO payloads.
+4. **Cloudflare WAF** protects external traffic to Keycloak (`id.tickell.us`).
+5. **Internal Kerberos** continues to use `id.home.tickell.us` for SPNEGO.
+6. **Entra ID** syncs users and registers Windows devices.
 
 **Confidence:** High
 
@@ -31,7 +34,8 @@
 > **Status:** Samba AD is already set up with:
 > - **Realm:** `HOME.TICKELL.US`
 > - **DNS domain:** `home.tickell.us`
-> - **NetBIOS domain:** `HOME`
+> - **NetBIOS:** `HOME`
+> - **DCs:** `rio.home.tickell.us`, `donga.home.tickell.us`
 
 **Verification steps:**
 ```bash
@@ -41,58 +45,80 @@ klist
 ```
 Confirm valid TGT and ticket.
 
-Ensure all clients use your Samba DC for DNS and NTP is in sync.
-
-**Domain Controllers:**
-- `rio.home.tickell.us`
-- `donga.home.tickell.us`
+Ensure DNS resolves internally and NTP is synced.
 
 **Confidence:** High
 
 ---
 
-## Phase 2 — Deploy Keycloak
+## Phase 2 — Deploy Keycloak (Behind Cloudflare)
 
-- Deploy with Podman and Caddy (TLS via Let’s Encrypt).
+**Public URL:** `https://id.tickell.us` (via Cloudflare)  
+**Internal URL:** `https://id.home.tickell.us` (local only)
+
+### Deployment steps
+1. Deploy Keycloak + Postgres + Caddy via Podman.
+2. Caddy serves both internal and public hostnames.
+3. Public DNS (`id.tickell.us`) proxied by Cloudflare → Caddy (public IP).
+4. Internal DNS (`id.tickell.us` & `id.home.tickell.us`) resolves directly to LAN IP.
+
+### Cloudflare configuration
+- Proxy ON for `id.tickell.us` (WAF, DDoS protection).
+- Page Rules for `id.tickell.us/*`:
+  - **Security:** High
+  - **Cache Level:** Bypass
+  - **Rocket Loader:** Disabled
+- Split-horizon DNS so internal clients reach LAN directly.
+
+**Confidence:** High
+
+### Keycloak configuration
 - Realm: `tickell`
 - LDAP connection: `ldaps://rio.home.tickell.us:636`
 - Bind DN: `CN=Keycloak Bind,CN=Users,DC=home,DC=tickell,DC=us`
-- Attributes mapped: `sAMAccountName`, `mail`, `givenName`, `sn`
 - Sync mode: **READ_ONLY**
-- Test login with Samba user credentials.
+- MFA: OTP + Passkeys
 
 **Confidence:** High
 
 ---
 
-## Phase 3 — Kerberos Integration (Optional)
+## Phase 3 — Kerberos Integration (Internal Only)
 
-Add SPNs and export keytab for Keycloak service:
+> Cloudflare WAF terminates TLS, so SPNEGO only works internally.
+
+### Internal hostname for Kerberos
+`id.home.tickell.us` — accessible only via internal DNS.
+
+### SPN and keytab setup
 ```bash
-samba-tool spn add keycloak$ HTTP/id.tickell.us
 samba-tool spn add keycloak$ HTTP/id.home.tickell.us
-samba-tool domain exportkeytab --principal=HTTP/id.tickell.us --principal=HTTP/id.home.tickell.us /tmp/idp-http.keytab
+samba-tool domain exportkeytab --principal=HTTP/id.home.tickell.us /tmp/idp-http.keytab
 ```
 
-Update `/etc/krb5.conf`:
+### Kerberos config mapping
 ```ini
 [domain_realm]
   .tickell.us = HOME.TICKELL.US
   .home.tickell.us = HOME.TICKELL.US
 ```
 
-**Confidence:** Medium
+### Browser policy (internal clients)
+- **Windows/Edge/Chrome:** add `id.home.tickell.us` to Local Intranet zone or `AuthServerAllowlist`.
+- **macOS Chrome/Firefox:** add to trusted URIs for negotiate-auth.
+
+**Confidence:** High
 
 ---
 
 ## Phase 4 — ManageEngine MDM Setup
 
-1. Enroll Macs/iPhones in ManageEngine MDM (User-Approved MDM).
+1. Enroll Macs/iPhones in ManageEngine MDM.
 2. Push **Kerberos SSO** profile:
    - Realm: `HOME.TICKELL.US`
-   - Domain: `.home.tickell.us`
+   - Domains: `.home.tickell.us`
    - KDCs: `rio.home.tickell.us`, `donga.home.tickell.us`
-3. Push Wi-Fi (EAP-TLS), VPN (on-demand), and SCEP/cert payloads.
+3. Push Wi-Fi (EAP-TLS), VPN, and SCEP/cert payloads.
 
 **Confidence:** High
 
@@ -100,17 +126,12 @@ Update `/etc/krb5.conf`:
 
 ## Phase 5 — Add Apps to Keycloak
 
-Create OIDC clients in Keycloak for:
-- Nextcloud
-- Vaultwarden
-- Grafana
-- Home Assistant
+OIDC Clients:
+- Nextcloud (`https://cloud.tickell.us`)
+- Vaultwarden (`https://vault.tickell.us`)
+- Grafana, Home Assistant, etc.
 
-Redirect URI examples:
-```
-https://cloud.tickell.us/login/oauth2/callback
-https://vault.tickell.us/oauth/callback
-```
+Each app trusts Keycloak (`https://id.tickell.us`) as the issuer.
 
 **Confidence:** High
 
@@ -118,22 +139,14 @@ https://vault.tickell.us/oauth/callback
 
 ## Phase 6 — Lightweight Entra Integration (Hybrid-like)
 
-### User Sync Script (Samba → Entra)
-Export and sync users manually or via script:
-```bash
-samba-tool user export /tmp/users.ldif
-```
-Convert and import via PowerShell or Graph API.
+### 6.1 User Sync Script
+Export users from Samba and import to Entra via Graph API.
 
-### Device Registration (Windows)
-Register Windows PCs while remaining AD-joined:
-```bash
-dsregcmd /join
-```
-Devices appear as *Registered* in Entra.
+### 6.2 Device Registration (Windows)
+Windows PCs (Samba-joined) → `dsregcmd /join` → Entra *Registered*.
 
-### Entra Domain Services (optional)
-For full hybrid AD join (adds cost ~$100/mo).
+### 6.3 Optional AADS
+Enable **Microsoft Entra Domain Services** if full AD-like join needed.
 
 **Confidence:** High
 
@@ -141,10 +154,11 @@ For full hybrid AD join (adds cost ~$100/mo).
 
 ## Phase 7 — Security Baselines
 
-- Enforce MFA (WebAuthn + OTP)
-- TLS via Caddy
-- Nightly Postgres + Keycloak backups
-- Maintain local Samba + cloud admin accounts
+- MFA (WebAuthn + OTP)
+- TLS (Let’s Encrypt via Caddy)
+- Backups (Postgres + Keycloak export)
+- Cloudflare WAF (public-facing IdP)
+- Local admin + Entra break-glass account
 
 **Confidence:** High
 
@@ -154,41 +168,11 @@ For full hybrid AD join (adds cost ~$100/mo).
 
 | Day | Action |
 |-----|---------|
-| 1 | Verify Samba AD + test joins |
-| 2 | Deploy Keycloak + integrate LDAP |
+| 1 | Verify Samba AD joins |
+| 2 | Deploy Keycloak (Cloudflare-protected) |
 | 3 | Configure MDM + enroll Apple devices |
 | 4 | Register Windows PCs to Entra |
-| Later | Add Entra Domain Services or cloud federation |
-
-**Confidence:** High
-
----
-
-## Phase 9 — Optional Automation
-
-### Samba → Entra Sync (Python)
-```python
-from ldap3 import Server, Connection, ALL
-from msgraph.core import GraphClient
-import os
-
-server = Server('ldaps://rio.home.tickell.us', get_info=ALL)
-conn = Connection(server, user='CN=Keycloak Bind,CN=Users,DC=home,DC=tickell,DC=us', password=os.getenv('LDAP_PASS'))
-conn.bind()
-conn.search('DC=home,DC=tickell,DC=us', '(objectClass=user)', attributes=['sAMAccountName','mail','displayName'])
-
-client = GraphClient(credential=os.getenv('GRAPH_TOKEN'))
-for entry in conn.entries:
-    upn = f"{entry.sAMAccountName}@id.tickell.us"
-    payload = {
-      'accountEnabled': True,
-      'displayName': str(entry.displayName),
-      'userPrincipalName': upn,
-      'mailNickname': str(entry.sAMAccountName),
-      'passwordProfile': {'forceChangePasswordNextSignIn': False, 'password': 'TempPassw0rd!'}
-    }
-    client.post('/users', json=payload)
-```
+| Later | Optional AADS + cloud federation |
 
 **Confidence:** High
 
@@ -196,45 +180,40 @@ for entry in conn.entries:
 
 ## Architecture Diagrams
 
-### A) Core Stack (Current)
+### A) Current: Internal + Cloudflare Split
 
 ```
             Internet
                │
                ▼
-        +----------------+
-        |    Caddy TLS   |
-        +----------------+
-               │ https://id.tickell.us
-               ▼
-        +----------------+
-        |   Keycloak     |
-        +----------------+
-           ▲          ▲
-           │ OIDC/SAML│
-           │          │ LDAP/Bind (read-only)
-           │          ▼
-  +----------------+  +----------------------+
-  |   Your Apps    |  |  Samba AD (HOME)     |
-  |  (Nextcloud,   |  |  Realm: HOME.TICKELL.US
-  |  Grafana, etc) |  |  Domain: home.tickell.us
-  +----------------+  +----------------------+
-           ▲                     ▲
-           │                     │
-           │ MDM profiles        │ Kerberos tickets
-           ▼                     │
-   +-----------------+           │
-   | ManageEngine    |           │
-   |   MDM (Free)    |           │
-   +-----------------+           │
-           ▲                     │
-   +--------------------+  +--------------------+
-   | macOS / iOS/iPadOS |  | Windows 10/11     |
-   | (SSO Extension)    |  | (AD-joined: HOME) |
-   +--------------------+  +--------------------+
+       +---------------------+
+       |   Cloudflare WAF    |
+       | (Proxy id.tickell.us)|
+       +---------┬-----------+
+                 │ HTTPS
+                 ▼
+       +---------------------+
+       |     Caddy Proxy     |
+       | id.tickell.us +     |
+       | id.home.tickell.us  |
+       +---------┬-----------+
+                 │
+         +-------▼--------+
+         |    Keycloak    |
+         |  Realm: tickell|
+         +-------┬--------+
+                 │ LDAP/Bind
+                 ▼
+         +-----------------+
+         |  Samba AD (HOME)|
+         | Realm: HOME.TICKELL.US |
+         +-----------------+
+
+   Internal users → id.home.tickell.us (Kerberos SPNEGO)
+   External users → id.tickell.us (Cloudflare HTTPS)
 ```
 
-### B) Entra Extension (Future)
+### B) Future: Entra Integration
 
 ```
        +---------------------+
@@ -246,9 +225,9 @@ for entry in conn.entries:
      |  Sync Script (Python) |
      +-----------▲-----------+
                  │ LDAP (read)
-           +-----+-----+
-           |  Samba AD |
-           +-----------+
+          +------+------ +
+          | Samba AD   |
+          +-------------+
 
 Windows (AD-joined) → dsregcmd /join → Entra: Registered
 ```
@@ -256,16 +235,15 @@ Windows (AD-joined) → dsregcmd /join → Entra: Registered
 ### C) Login Flow
 
 ```
-User → App (Nextcloud) → Redirect to Keycloak →
-  (TGT) SPNEGO or Password+MFA → Tokens → App session
+External user → id.tickell.us → Cloudflare (TLS terminate) → Keycloak
+Internal user → id.home.tickell.us → SPNEGO Kerberos → SSO token → App
 ```
 
 ---
 
 **Final State:**  
-- **Samba AD** = local identity and Kerberos source  
-- **Keycloak** = federated IdP for all apps  
-- **MDM** = device configuration & Kerberos SSO payloads  
-- **Entra ID** = optional cloud layer for registration and sync
-
-Ready for Git versioning.
+- **Samba AD** = internal identity & Kerberos realm (`HOME.TICKELL.US`)  
+- **Keycloak** = public IdP (`id.tickell.us`) behind Cloudflare; internal SPNEGO at `id.home.tickell.us`  
+- **MDM** = manages device SSO & profiles  
+- **Entra ID** = optional cloud sync & registration  
+- **Cloudflare** = WAF + DDoS protection for public identity endpoint
