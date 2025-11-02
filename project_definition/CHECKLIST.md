@@ -45,6 +45,9 @@
 - [ ] **Split‑DNS** for `id.tickell.us` proven
 - [ ] **No** `id.home.tickell.us` anywhere
 
+**Future Enhancements (Post-Phase 1)**
+- [ ] **SSSD Sudo Integration**: Add `sudo` service to SSSD config for centralized sudo rules via Samba AD
+
 ---
 
 ## 🚢 Phase 2 — Platform Migration (OKD + GitOps)  **← Only after Phase 1 is perfect**
