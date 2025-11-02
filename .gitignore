@@ -1,0 +1,47 @@
+# Private keys and sensitive certificate files
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Environment files with secrets
+.env
+.env.local
+.env.production
+.env.staging
+
+# Keycloak sensitive configuration
+keycloak-stack/certs/*.key
+keycloak-stack/config/keycloak/*.keytab
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and editor files
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Podman/Docker volumes and data
+postgres-data/
+keycloak-data/
+caddy-data/
+caddy-config/
