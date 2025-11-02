@@ -1,3 +1,4 @@
+# Main Keycloak service (behind Cloudflare WAF)
 id.tickell.us {
     # Use internal CA certificate
     tls /etc/ssl/certs/id.tickell.us.crt /etc/ssl/private/id.tickell.us.key
@@ -9,7 +10,7 @@ id.tickell.us {
         header_up X-Real-IP {remote}
     }
     
-    # Security headers
+    # Security headers for web interface
     header {
         X-Frame-Options SAMEORIGIN
         X-Content-Type-Options nosniff
@@ -17,7 +18,7 @@ id.tickell.us {
         X-XSS-Protection "1; mode=block"
     }
     
-    # Better logging for troubleshooting SSSD auth
+    # Logging for troubleshooting
     log {
         output file /data/logs/access.log
         format json {
@@ -27,6 +28,37 @@ id.tickell.us {
         level INFO
     }
     
-    # Handle health checks
+    # Health check endpoint
     respond /health 200
+}
+
+# SCEP/API endpoint (direct access, bypasses Cloudflare WAF)
+scep.id.tickell.us {
+    # Use same wildcard certificate
+    tls /etc/ssl/certs/id.tickell.us.crt /etc/ssl/private/id.tickell.us.key
+    
+    reverse_proxy keycloak-main:8080 {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+        header_up X-Real-IP {remote}
+    }
+    
+    # Minimal security headers for API compatibility
+    header {
+        X-Content-Type-Options nosniff
+    }
+    
+    # Separate logging for SCEP/API traffic
+    log {
+        output file /data/logs/scep-api.log
+        format json {
+            time_format "2006-01-02T15:04:05Z07:00"
+            message_key "msg"
+        }
+        level INFO
+    }
+    
+    # Health check for SCEP endpoint
+    respond /scep/health 200
 }

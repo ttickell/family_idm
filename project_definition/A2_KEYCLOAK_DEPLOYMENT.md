@@ -105,7 +105,7 @@ KC_ADMIN_PASSWORD=your-secure-admin-password
 
 ### 2.1 Generate Internal CA Certificate
 - [ ] Request certificate for `id.tickell.us` from your internal CA
-- [ ] Ensure certificate includes SAN (Subject Alternative Name) for `id.tickell.us`
+- [ ] Ensure certificate includes SAN with wildcard: `DNS:*.id.tickell.us, DNS:id.tickell.us`
 - [ ] Copy certificate files to project: `cp id.tickell.us.crt ~/keycloak-stack/certs/`
 - [ ] Copy private key: `cp id.tickell.us.key ~/keycloak-stack/certs/`
 - [ ] Set proper permissions: `chmod 600 ~/keycloak-stack/certs/id.tickell.us.key`
@@ -117,6 +117,7 @@ KC_ADMIN_PASSWORD=your-secure-admin-password
 
 **🔧 config/Caddyfile:**
 ```
+# Main Keycloak service (behind Cloudflare WAF)
 id.tickell.us {
     # Use internal CA certificate
     tls /etc/ssl/certs/id.tickell.us.crt /etc/ssl/private/id.tickell.us.key
@@ -128,7 +129,7 @@ id.tickell.us {
         header_up X-Real-IP {remote}
     }
     
-    # Security headers
+    # Security headers for web interface
     header {
         X-Frame-Options SAMEORIGIN
         X-Content-Type-Options nosniff
@@ -149,12 +150,49 @@ id.tickell.us {
     # Health check endpoint
     respond /health 200
 }
+
+# SCEP/API endpoint (direct access, bypasses Cloudflare WAF)
+scep.id.tickell.us {
+    # Use same wildcard certificate
+    tls /etc/ssl/certs/id.tickell.us.crt /etc/ssl/private/id.tickell.us.key
+    
+    reverse_proxy keycloak-main:8080 {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+        header_up X-Real-IP {remote}
+    }
+    
+    # Minimal security headers for API compatibility
+    header {
+        X-Content-Type-Options nosniff
+    }
+    
+    # Separate logging for SCEP/API traffic
+    log {
+        output file /data/logs/scep-api.log
+        format json {
+            time_format "2006-01-02T15:04:05Z07:00"
+            message_key "msg"
+        }
+        level INFO
+    }
+    
+    # Health check for SCEP endpoint
+    respond /scep/health 200
+}
 ```
 
 ### 2.3 Create Certificate Directory Structure
 - [ ] Create certificate directory: `mkdir -p ~/keycloak-stack/certs`
 - [ ] Verify certificate files are present and readable
 - [ ] Test certificate validity: `openssl x509 -in certs/id.tickell.us.crt -text -noout`
+- [ ] Verify wildcard SAN: `openssl x509 -in certs/id.tickell.us.crt -text -noout | grep -A2 "Subject Alternative Name"`
+
+### 2.4 Configure SCEP/API Endpoint (Optional for MDM)
+- [ ] Plan SCEP subdomain for device management: `scep.id.tickell.us`
+- [ ] Note: Wildcard certificate covers both `id.tickell.us` and `scep.id.tickell.us`
+- [ ] SCEP endpoint will bypass Cloudflare WAF for direct device access
 
 ---
 
@@ -162,15 +200,19 @@ id.tickell.us {
 
 ### 3.1 DNS Configuration
 - [ ] Add DNS A record: `id.tickell.us` → `idealx` public IP in Cloudflare
+- [ ] Add DNS A record: `scep.id.tickell.us` → `idealx` public IP in Cloudflare
 - [ ] Verify external DNS resolution: `dig id.tickell.us @8.8.8.8`
+- [ ] Verify SCEP DNS resolution: `dig scep.id.tickell.us @8.8.8.8`
 
-### 4.2 Cloudflare Settings
-- [ ] Enable Proxy (orange cloud) for `id.tickell.us`
-- [ ] SSL/TLS: **Full (strict)** mode (required for internal CA)
-- [ ] Cache Level: BYPASS for all requests
-- [ ] Disable Auto Minify and Rocket Loader
-- [ ] Security Level: Medium
-- [ ] **Important:** Cloudflare must trust your internal CA for Full (strict) mode
+### 3.2 Cloudflare Settings
+- [ ] **Main Service** (`id.tickell.us`):
+  - [ ] Enable Proxy (orange cloud) ✅ 
+  - [ ] SSL/TLS: **Full (strict)** mode
+  - [ ] Cache Level: BYPASS for all requests
+  - [ ] Security Level: Medium
+- [ ] **SCEP/API Service** (`scep.id.tickell.us`):
+  - [ ] **DNS Only** (gray cloud) ⚪ - No proxy, direct access
+  - [ ] Used for device management and API calls that need to bypass WAF
 
 ---
 
@@ -185,8 +227,10 @@ id.tickell.us {
 ### 4.2 Verify Services
 - [ ] Test database: `podman-compose exec postgres psql -U keycloak -d keycloak -c '\l'`
 - [ ] Test Keycloak startup: `podman-compose logs keycloak | grep "Keycloak.*started"`
-- [ ] Test Caddy TLS: `curl -I https://id.tickell.us/health` (should return 200)
+- [ ] Test main endpoint: `curl -I https://id.tickell.us/health` (should return 200)
+- [ ] Test SCEP endpoint: `curl -I https://scep.id.tickell.us/scep/health` (should return 200)
 - [ ] Verify certificate: `openssl s_client -connect id.tickell.us:443 -servername id.tickell.us`
+- [ ] Verify SCEP certificate: `openssl s_client -connect scep.id.tickell.us:443 -servername scep.id.tickell.us`
 
 ### 4.3 Access Admin Console
 - [ ] Access `https://id.tickell.us/admin` externally
@@ -293,7 +337,8 @@ id.tickell.us {
 - [ ] **Internal Login is Silent:** Users on domain-joined devices access `https://id.tickell.us` without credential prompt
 - [ ] **External Login Works:** External users can authenticate with username/password at `https://id.tickell.us`
 - [ ] **LDAP Integration:** All Samba AD users can authenticate through Keycloak
-- [ ] **Split-DNS Functional:** `id.tickell.us` resolves correctly both internally and externally
+- [ ] **Split-DNS Functional:** Both `id.tickell.us` and `scep.id.tickell.us` resolve correctly internally and externally
+- [ ] **SCEP/API Access:** `scep.id.tickell.us` accessible directly without Cloudflare WAF interference
 - [ ] **No hostname confusion:** No references to `id.home.tickell.us` anywhere
 - [ ] **Admin Access:** Keycloak admin console accessible and secured
 - [ ] **Stack Reproducible:** `podman-compose down && podman-compose up -d` works reliably
@@ -314,6 +359,7 @@ id.tickell.us {
 ```bash
 # Test DNS resolution
 dig id.tickell.us @rio.home.tickell.us
+dig scep.id.tickell.us @rio.home.tickell.us
 
 # Test Kerberos ticket
 klist -v
@@ -323,12 +369,18 @@ ldapsearch -H ldaps://rio.home.tickell.us:636 -D "CN=Keycloak Bind,CN=Users,DC=h
 
 # Test HTTPS access with internal CA
 curl -I https://id.tickell.us
+curl -I https://scep.id.tickell.us
 
-# Verify certificate chain
+# Verify certificate chain for both endpoints
 openssl s_client -connect id.tickell.us:443 -servername id.tickell.us -showcerts
+openssl s_client -connect scep.id.tickell.us:443 -servername scep.id.tickell.us -showcerts
 
-# Test certificate validity
+# Test certificate validity and wildcard SAN
 openssl x509 -in certs/id.tickell.us.crt -text -noout | grep -A2 "Subject Alternative Name"
+
+# Test Cloudflare routing
+curl -I https://id.tickell.us -H "CF-Connecting-IP: 1.2.3.4"  # Should show Cloudflare headers
+curl -I https://scep.id.tickell.us  # Should NOT show Cloudflare headers (direct)
 ```
 
 ### Podman-Compose Management
