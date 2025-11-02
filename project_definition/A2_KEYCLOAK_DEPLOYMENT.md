@@ -1,114 +1,221 @@
-# A2. Keycloak @ `https://id.tickell.us` - Deployment Checklist
+# A2. Keycloak @ `https://id.tickell.us` - Deployment with Podman-Compose
 
 ## Overview
-Deploy Keycloak on Podman with Caddy reverse proxy, integrate with Samba AD via LDAP, and enable Kerberos SPNEGO for silent internal authentication.
+Deploy Keycloak stack using `podman-compose` with declarative YAML configuration. This approach better prepares for Phase 2 GitOps migration and provides reproducible infrastructure-as-code.
 
 **Target URL:** `https://id.tickell.us`  
 **Host:** `idealx.home.tickell.us`  
-**Backend:** PostgreSQL + Keycloak containers via Podman
+**Stack:** PostgreSQL + Keycloak + Caddy via podman-compose
 
 ---
 
-## 🏗️ **Step 1: Infrastructure Setup**
+## 🏗️ **Step 1: Podman-Compose Setup**
 
-### 1.1 Podman Network & Storage
-- [ ] Create dedicated podman network: `podman network create keycloak-net`
-- [ ] Create persistent volumes:
-  - [ ] `podman volume create keycloak-postgres-data`
-  - [ ] `podman volume create keycloak-data`
-  - [ ] `podman volume create caddy-data`
-  - [ ] `podman volume create caddy-config`
+### 1.1 Install podman-compose
+- [ ] Install podman-compose: `pip3 install podman-compose` or package manager
+- [ ] Verify installation: `podman-compose --version`
+- [ ] Create project directory: `mkdir -p ~/keycloak-stack && cd ~/keycloak-stack`
 
-### 1.2 PostgreSQL Database
-- [ ] Deploy PostgreSQL container with proper environment
-- [ ] Verify database connectivity and create Keycloak database
-- [ ] Test database persistence across container restarts
+### 1.2 Create Docker Compose Configuration
+- [ ] Create `docker-compose.yml` with PostgreSQL, Keycloak, and Caddy services
+- [ ] Create `.env` file for sensitive environment variables
+- [ ] Create `config/` directory for service configurations
+
+**🔧 docker-compose.yml:**
+```yaml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: keycloak-postgres
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - keycloak-net
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: keycloak-main
+    depends_on:
+      - postgres
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      KC_HOSTNAME: id.tickell.us
+      KC_HOSTNAME_STRICT: false
+      KC_PROXY: edge
+      KEYCLOAK_ADMIN: ${KC_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+    command: ["start"]
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+      - ./config/keycloak:/opt/keycloak/conf
+    networks:
+      - keycloak-net
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - keycloak-net
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  keycloak-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  keycloak-net:
+    driver: bridge
+```
+
+**🔧 .env file:**
+```bash
+# Database credentials
+KC_DB_PASSWORD=your-secure-db-password
+
+# Keycloak admin credentials
+KC_ADMIN_USER=admin
+KC_ADMIN_PASSWORD=your-secure-admin-password
+```
 
 ---
 
-## 🌐 **Step 2: Caddy Reverse Proxy**
+## 🌐 **Step 2: Caddy Configuration**
 
-### 2.1 Caddy Container Setup
-- [ ] Create Caddyfile configuration for `id.tickell.us`
-- [ ] Deploy Caddy container with volume mounts
-- [ ] Configure automatic HTTPS with Let's Encrypt
+### 2.1 Create Caddyfile
+- [ ] Create `config/Caddyfile` with proper proxy configuration
+- [ ] Configure automatic HTTPS and real IP forwarding
+- [ ] Set up proper headers for Keycloak
 
-### 2.2 Internal DNS & Routing
+**🔧 config/Caddyfile:**
+```
+id.tickell.us {
+    reverse_proxy keycloak:8080 {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+    }
+    
+    # Security headers
+    header {
+        X-Frame-Options SAMEORIGIN
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+    
+    # Logging
+    log {
+        output file /var/log/caddy/access.log
+        format json
+    }
+}
+```
+
+### 2.2 Test Configuration
+- [ ] Validate Caddyfile syntax: `caddy validate --config config/Caddyfile`
 - [ ] Verify split-DNS resolution: `dig id.tickell.us @rio.home.tickell.us`
-- [ ] Test internal HTTP access to Caddy
-- [ ] Confirm proxy_protocol and real IP forwarding
 
 ---
 
-## 🔐 **Step 3: Keycloak Container**
+## ☁️ **Step 3: Cloudflare DNS Setup**
 
-### 3.1 Initial Deployment
-- [ ] Deploy Keycloak container with PostgreSQL backend
-- [ ] Set initial admin credentials securely
-- [ ] Verify Keycloak starts and connects to database
+### 3.1 DNS Configuration
+- [ ] Add DNS A record: `id.tickell.us` → `idealx` public IP in Cloudflare
+- [ ] Verify external DNS resolution: `dig id.tickell.us @8.8.8.8`
 
-### 3.2 Basic Configuration
-- [ ] Access admin console at `https://id.tickell.us/admin`
-- [ ] Configure hostname settings and proxy headers
-- [ ] Set up proper logging and monitoring
-
----
-
-## ☁️ **Step 4: Cloudflare Integration**
-
-### 4.1 DNS Configuration
-- [ ] Add DNS A record: `id.tickell.us` → `idealx` public IP
-- [ ] Verify external DNS resolution
-- [ ] Test external HTTPS access
-
-### 4.2 Cloudflare Settings
+### 3.2 Cloudflare Settings
 - [ ] Enable Proxy (orange cloud) for `id.tickell.us`
-- [ ] Set Cache Level: BYPASS for all requests
-- [ ] Disable Rocket Loader and Auto Minify
-- [ ] Configure SSL/TLS: Full (strict) mode
+- [ ] SSL/TLS: Full (strict) mode
+- [ ] Cache Level: BYPASS for all requests
+- [ ] Disable Auto Minify and Rocket Loader
+- [ ] Security Level: Medium
+
+---
+
+## 🚀 **Step 4: Deploy Stack**
+
+### 4.1 Initial Deployment
+- [ ] Deploy stack: `podman-compose up -d`
+- [ ] Check all containers running: `podman-compose ps`
+- [ ] View logs: `podman-compose logs -f`
+
+### 4.2 Verify Services
+- [ ] Test database: `podman-compose exec postgres psql -U keycloak -d keycloak -c '\l'`
+- [ ] Test Keycloak startup: `podman-compose logs keycloak | grep "Keycloak.*started"`
+- [ ] Test Caddy: `curl -I http://localhost` (should redirect to HTTPS)
+
+### 4.3 Access Admin Console
+- [ ] Access `https://id.tickell.us/admin` externally
+- [ ] Login with admin credentials from `.env` file
+- [ ] Verify admin console loads properly
 
 ---
 
 ## 🏰 **Step 5: Realm Configuration**
 
 ### 5.1 Create Tickell Realm
-- [ ] Create new realm: `tickell`
-- [ ] Set realm display name and email configuration
-- [ ] Configure default locale and timezone
-
-### 5.2 Realm Settings
-- [ ] **Login Settings:**
+- [ ] Create new realm: `tickell` via admin console
+- [ ] Configure realm settings:
+  - [ ] Display name: "Tickell Family"
   - [ ] Email as username: ON
   - [ ] User registration: OFF
   - [ ] Edit username: OFF
-  - [ ] Forgot password: ON
-- [ ] **Security Defenses:**
-  - [ ] Brute force detection: ON
-  - [ ] X-Frame-Options: SAMEORIGIN
+  - [ ] Remember me: ON
+
+### 5.2 Security Settings
+- [ ] **Brute Force Detection:** Enable with max 5 failures
+- [ ] **Password Policy:** Minimum 8 chars, 1 digit, 1 special char
 - [ ] **Sessions:**
   - [ ] SSO Session Idle: 30 minutes
   - [ ] SSO Session Max: 10 hours
+  - [ ] Client Session Idle: 30 minutes
 
 ---
 
 ## 🔗 **Step 6: Samba LDAP Integration**
 
-### 6.1 LDAP Provider Setup
-- [ ] Create LDAP user federation provider
-- [ ] Configure connection: `ldaps://rio.home.tickell.us:636`
-- [ ] Set up bind DN: `CN=Keycloak Bind,CN=Users,DC=home,DC=tickell,DC=us`
-- [ ] Configure user search base: `CN=Users,DC=home,DC=tickell,DC=us`
+### 6.1 Create LDAP User Federation
+- [ ] Navigate to User Federation → Add provider → LDAP
+- [ ] Configure connection settings:
+  - [ ] Edit Mode: READ_ONLY
+  - [ ] Vendor: Active Directory
+  - [ ] Connection URL: `ldaps://rio.home.tickell.us:636`
+  - [ ] Users DN: `CN=Users,DC=home,DC=tickell,DC=us`
+  - [ ] Bind Type: simple
+  - [ ] Bind DN: `CN=Keycloak Bind,CN=Users,DC=home,DC=tickell,DC=us`
+  - [ ] Bind Credential: [password for bind account]
 
-### 6.2 LDAP Mappings
-- [ ] Map username to `sAMAccountName`
-- [ ] Map email to `mail` attribute
-- [ ] Map first/last name to `givenName`/`sn`
-- [ ] Set import mode: READ_ONLY
+### 6.2 LDAP Mappers Configuration
+- [ ] **Username:** sAMAccountName
+- [ ] **Email:** mail
+- [ ] **First Name:** givenName
+- [ ] **Last Name:** sn
+- [ ] **Full Name:** cn
 
 ### 6.3 User Synchronization
 - [ ] Test LDAP connection and authentication
-- [ ] Perform initial user import/sync
+- [ ] Perform initial user import/sync: Synchronize all users
 - [ ] Verify user attributes are properly mapped
+- [ ] Test user login with LDAP credentials
 
 ---
 
@@ -126,15 +233,18 @@ Deploy Keycloak on Podman with Caddy reverse proxy, integrate with Samba AD via 
          -mapUser IDEALX$ -pass * -pType KRB5_NT_PRINCIPAL
   ```
 - [ ] Securely transfer keytab to `idealx` host
+- [ ] Copy keytab to compose stack: `cp keycloak.keytab ~/keycloak-stack/config/keycloak/`
 - [ ] Test keytab: `kinit -kt keycloak.keytab HTTP/id.tickell.us@HOME.TICKELL.US`
 
 ### 7.3 Keycloak Kerberos Configuration
-- [ ] Upload keytab to Keycloak admin console
+- [ ] Navigate to Authentication → Browser flow → Add execution
+- [ ] Add Kerberos authenticator to browser flow
 - [ ] Configure Kerberos authenticator:
   - [ ] Kerberos realm: `HOME.TICKELL.US`
   - [ ] Server principal: `HTTP/id.tickell.us@HOME.TICKELL.US`
-  - [ ] Keytab path: `/opt/keycloak/conf/keycloak.keytab`
-- [ ] Add Kerberos to browser authentication flow
+  - [ ] Keytab: `/opt/keycloak/conf/keycloak.keytab`
+  - [ ] Debug: ON (initially)
+- [ ] Set execution as ALTERNATIVE (fallback to username/password)
 
 ---
 
@@ -149,6 +259,7 @@ Deploy Keycloak on Podman with Caddy reverse proxy, integrate with Samba AD via 
 - [ ] Test internal access (should be silent with Kerberos)
 - [ ] Test external access (should prompt for username/password)
 - [ ] Verify fallback to form-based auth when Kerberos fails
+- [ ] Test with different browsers and devices
 
 ---
 
@@ -160,6 +271,7 @@ Deploy Keycloak on Podman with Caddy reverse proxy, integrate with Samba AD via 
 - [ ] **Split-DNS Functional:** `id.tickell.us` resolves correctly both internally and externally
 - [ ] **No hostname confusion:** No references to `id.home.tickell.us` anywhere
 - [ ] **Admin Access:** Keycloak admin console accessible and secured
+- [ ] **Stack Reproducible:** `podman-compose down && podman-compose up -d` works reliably
 - [ ] **Logging & Monitoring:** Basic logging configured for troubleshooting
 
 ---
@@ -188,15 +300,29 @@ ldapsearch -H ldaps://rio.home.tickell.us:636 -D "CN=Keycloak Bind,CN=Users,DC=h
 curl -I https://id.tickell.us
 ```
 
-### Container Management
+### Podman-Compose Management
 ```bash
-# View all Keycloak containers
-podman ps -a --filter label=app=keycloak
+# View all services
+podman-compose ps
 
-# Check container logs
-podman logs keycloak-main
-podman logs caddy-proxy
+# Check service logs
+podman-compose logs keycloak
+podman-compose logs caddy
+podman-compose logs postgres
 
-# Restart services
-podman restart keycloak-main caddy-proxy postgres-db
+# Restart specific service
+podman-compose restart keycloak
+
+# Full stack restart
+podman-compose restart
+
+# Update and redeploy
+podman-compose pull
+podman-compose up -d
+
+# Clean shutdown
+podman-compose down
+
+# Clean shutdown with volume removal (DESTRUCTIVE)
+podman-compose down -v
 ```
