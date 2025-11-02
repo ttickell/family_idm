@@ -1,0 +1,32 @@
+id.tickell.us {
+    # Use internal CA certificate
+    tls /etc/ssl/certs/id.tickell.us.crt /etc/ssl/private/id.tickell.us.key
+    
+    reverse_proxy keycloak-main:8080 {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+        header_up X-Real-IP {remote}
+    }
+    
+    # Security headers
+    header {
+        X-Frame-Options SAMEORIGIN
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-XSS-Protection "1; mode=block"
+    }
+    
+    # Better logging for troubleshooting SSSD auth
+    log {
+        output file /data/logs/access.log
+        format json {
+            time_format "2006-01-02T15:04:05Z07:00"
+            message_key "msg"
+        }
+        level INFO
+    }
+    
+    # Handle health checks
+    respond /health 200
+}

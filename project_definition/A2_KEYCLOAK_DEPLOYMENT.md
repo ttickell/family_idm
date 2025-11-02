@@ -70,6 +70,8 @@ services:
       - "443:443"
     volumes:
       - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs/id.tickell.us.crt:/etc/ssl/certs/id.tickell.us.crt:ro
+      - ./certs/id.tickell.us.key:/etc/ssl/private/id.tickell.us.key:ro
       - caddy-data:/data
       - caddy-config:/config
     networks:
@@ -99,20 +101,31 @@ KC_ADMIN_PASSWORD=your-secure-admin-password
 
 ---
 
-## 🌐 **Step 2: Caddy Configuration**
+## 🌐 **Step 2: Internal CA Certificate & Caddy Configuration**
 
-### 2.1 Create Caddyfile
-- [ ] Create `config/Caddyfile` with proper proxy configuration
-- [ ] Configure automatic HTTPS and real IP forwarding
-- [ ] Set up proper headers for Keycloak
+### 2.1 Generate Internal CA Certificate
+- [ ] Request certificate for `id.tickell.us` from your internal CA
+- [ ] Ensure certificate includes SAN (Subject Alternative Name) for `id.tickell.us`
+- [ ] Copy certificate files to project: `cp id.tickell.us.crt ~/keycloak-stack/certs/`
+- [ ] Copy private key: `cp id.tickell.us.key ~/keycloak-stack/certs/`
+- [ ] Set proper permissions: `chmod 600 ~/keycloak-stack/certs/id.tickell.us.key`
+
+### 2.2 Create Caddyfile with Internal TLS
+- [ ] Create `config/Caddyfile` with internal CA certificate configuration
+- [ ] Configure reverse proxy settings for Keycloak
+- [ ] Set up proper headers and security configuration
 
 **🔧 config/Caddyfile:**
 ```
 id.tickell.us {
-    reverse_proxy keycloak:8080 {
+    # Use internal CA certificate
+    tls /etc/ssl/certs/id.tickell.us.crt /etc/ssl/private/id.tickell.us.key
+    
+    reverse_proxy keycloak-main:8080 {
         header_up X-Forwarded-For {remote}
         header_up X-Forwarded-Proto {scheme}
         header_up X-Forwarded-Host {host}
+        header_up X-Real-IP {remote}
     }
     
     # Security headers
@@ -120,19 +133,28 @@ id.tickell.us {
         X-Frame-Options SAMEORIGIN
         X-Content-Type-Options nosniff
         Referrer-Policy strict-origin-when-cross-origin
+        X-XSS-Protection "1; mode=block"
     }
     
-    # Logging
+    # Logging for troubleshooting
     log {
-        output file /var/log/caddy/access.log
-        format json
+        output file /data/logs/access.log
+        format json {
+            time_format "2006-01-02T15:04:05Z07:00"
+            message_key "msg"
+        }
+        level INFO
     }
+    
+    # Health check endpoint
+    respond /health 200
 }
 ```
 
-### 2.2 Test Configuration
-- [ ] Validate Caddyfile syntax: `caddy validate --config config/Caddyfile`
-- [ ] Verify split-DNS resolution: `dig id.tickell.us @rio.home.tickell.us`
+### 2.3 Create Certificate Directory Structure
+- [ ] Create certificate directory: `mkdir -p ~/keycloak-stack/certs`
+- [ ] Verify certificate files are present and readable
+- [ ] Test certificate validity: `openssl x509 -in certs/id.tickell.us.crt -text -noout`
 
 ---
 
@@ -142,18 +164,20 @@ id.tickell.us {
 - [ ] Add DNS A record: `id.tickell.us` → `idealx` public IP in Cloudflare
 - [ ] Verify external DNS resolution: `dig id.tickell.us @8.8.8.8`
 
-### 3.2 Cloudflare Settings
+### 4.2 Cloudflare Settings
 - [ ] Enable Proxy (orange cloud) for `id.tickell.us`
-- [ ] SSL/TLS: Full (strict) mode
+- [ ] SSL/TLS: **Full (strict)** mode (required for internal CA)
 - [ ] Cache Level: BYPASS for all requests
 - [ ] Disable Auto Minify and Rocket Loader
 - [ ] Security Level: Medium
+- [ ] **Important:** Cloudflare must trust your internal CA for Full (strict) mode
 
 ---
 
 ## 🚀 **Step 4: Deploy Stack**
 
 ### 4.1 Initial Deployment
+- [ ] Ensure certificate files are in place: `ls -la certs/id.tickell.us.*`
 - [ ] Deploy stack: `podman-compose up -d`
 - [ ] Check all containers running: `podman-compose ps`
 - [ ] View logs: `podman-compose logs -f`
@@ -161,7 +185,8 @@ id.tickell.us {
 ### 4.2 Verify Services
 - [ ] Test database: `podman-compose exec postgres psql -U keycloak -d keycloak -c '\l'`
 - [ ] Test Keycloak startup: `podman-compose logs keycloak | grep "Keycloak.*started"`
-- [ ] Test Caddy: `curl -I http://localhost` (should redirect to HTTPS)
+- [ ] Test Caddy TLS: `curl -I https://id.tickell.us/health` (should return 200)
+- [ ] Verify certificate: `openssl s_client -connect id.tickell.us:443 -servername id.tickell.us`
 
 ### 4.3 Access Admin Console
 - [ ] Access `https://id.tickell.us/admin` externally
@@ -296,8 +321,14 @@ klist -v
 # Check LDAP connectivity
 ldapsearch -H ldaps://rio.home.tickell.us:636 -D "CN=Keycloak Bind,CN=Users,DC=home,DC=tickell,DC=us" -W
 
-# Test HTTP access
+# Test HTTPS access with internal CA
 curl -I https://id.tickell.us
+
+# Verify certificate chain
+openssl s_client -connect id.tickell.us:443 -servername id.tickell.us -showcerts
+
+# Test certificate validity
+openssl x509 -in certs/id.tickell.us.crt -text -noout | grep -A2 "Subject Alternative Name"
 ```
 
 ### Podman-Compose Management
