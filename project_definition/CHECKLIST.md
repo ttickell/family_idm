@@ -18,7 +18,7 @@
 - [ ] Caddy reverse proxy on `idealx` serves Keycloak at **`id.tickell.us`**
 - [ ] Cloudflare: **Proxy ON** externally; Cache **Bypass**, Rocket Loader **OFF**
 - [ ] Keycloak realm `tickell` created (email-as-username ON, self-registration OFF)
-- [ ] LDAP federation (READ_ONLY) → `ldaps://rio.home.tickell.us:636` (failover `donga`)
+- [ ] LDAP federation (READ_ONLY) → `ldap://rio.home.tickell.us:389` (temporary, upgrade to LDAPS after cert fix)
 - [ ] Kerberos: add SPN **`HTTP/id.tickell.us`**, export/upload keytab
 - [ ] Browsers (internal) allow SPNEGO to `id.tickell.us`
 
@@ -39,6 +39,12 @@
 - [ ] Grafana OIDC
 - [ ] Home Assistant OIDC
 - [ ] Backups: Keycloak DB + realm export; app data dumps
+
+### A5. Certificate Hardening
+- [ ] Replace Samba LDAPS auto-generated certificate with internal CA certificate
+- [ ] Upgrade LDAP federation from `ldap://rio.home.tickell.us:389` to `ldaps://rio.home.tickell.us:636`
+- [ ] Verify LDAPS certificate validation works properly in Keycloak federation
+- [ ] Update any other services using auto-generated certificates to use internal CA
 
 **Phase 1 Definition of Done**
 - [ ] **Internal** app login is silent (SPNEGO); **External** login works with passkeys/MFA
