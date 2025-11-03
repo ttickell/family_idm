@@ -16,7 +16,53 @@ Deploy Keycloak stack using `podman-compose` with declarative YAML configuration
 - [ ] Verify installation: `podman-compose --version`
 - [ ] Create project directory: `mkdir -p ~/keycloak-stack && cd ~/keycloak-stack`
 
-### 1.2 Create Docker Compose Configuration
+### 1.2 Configure Privileged Ports for Rootless Podman
+**Why needed:** Rootless Podman cannot bind to privileged ports (80, 443) by default. This is a security feature that prevents non-root users from binding to system ports.
+
+- [ ] Check current configuration: `sysctl net.ipv4.ip_unprivileged_port_start`
+  - [ ] Should show: `net.ipv4.ip_unprivileged_port_start = 1024`
+- [ ] Test current limitation (should fail):
+  ```bash
+  python3 -c "
+  import socket
+  s = socket.socket()
+  try:
+      s.bind(('', 80))
+      print('SUCCESS: Can bind to port 80')
+      s.close()
+  except PermissionError:
+      print('EXPECTED FAILURE: Cannot bind to port 80 (permission denied)')
+  "
+  ```
+- [ ] Add system configuration to allow ports 80+:
+  ```bash
+  echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee -a /etc/sysctl.conf
+  ```
+- [ ] Verify configuration was added: `tail -n 5 /etc/sysctl.conf`
+  - [ ] Should show: `net.ipv4.ip_unprivileged_port_start=80` as last line
+- [ ] Apply configuration immediately: `sudo sysctl -p`
+- [ ] Verify new setting is active: `sysctl net.ipv4.ip_unprivileged_port_start`
+  - [ ] Should show: `net.ipv4.ip_unprivileged_port_start = 80`
+- [ ] Test port binding now works:
+  ```bash
+  python3 -c "
+  import socket
+  s = socket.socket()
+  try:
+      s.bind(('', 80))
+      print('SUCCESS: Can now bind to port 80!')
+      s.close()
+  except OSError as e:
+      if 'Address already in use' in str(e):
+          print('SUCCESS: Port 80 is available (something else using it)')
+      else:
+          print(f'ERROR: {e}')
+  "
+  ```
+
+**Security Note:** This change allows any process run by your user to bind to ports 80+. In a production environment, consider using systemd user services or port forwarding instead.
+
+### 1.3 Create Docker Compose Configuration
 - [ ] Create `docker-compose.yml` with PostgreSQL, Keycloak, and Caddy services
 - [ ] Create `.env` file for sensitive environment variables
 - [ ] Create `config/` directory for service configurations
@@ -91,13 +137,15 @@ networks:
 
 **🔧 .env file:**
 ```bash
-# Database credentials
-KC_DB_PASSWORD=your-secure-db-password
+# Database credentials (use quoted values for special characters)
+KC_DB_PASSWORD="your-secure-db-password"
 
 # Keycloak admin credentials
-KC_ADMIN_USER=admin
-KC_ADMIN_PASSWORD=your-secure-admin-password
+KC_ADMIN_USER="admin"
+KC_ADMIN_PASSWORD="your-secure-admin-password"
 ```
+
+**Important:** Always quote your environment variable values to prevent parsing issues with special characters, spaces, or shell metacharacters.
 
 ---
 
@@ -396,6 +444,8 @@ scep.id.tickell.us {
 
 ### Troubleshooting Commands
 ```bash
+### Troubleshooting Commands
+```bash
 # Test DNS resolution
 dig id.tickell.us @rio.home.tickell.us
 dig mdm.id.tickell.us @rio.home.tickell.us
@@ -424,6 +474,11 @@ openssl x509 -in certs/id.tickell.us.crt -text -noout | grep -A2 "Subject Altern
 curl -I https://id.tickell.us -H "CF-Connecting-IP: 1.2.3.4"  # Should show Cloudflare headers
 curl -I https://mdm.id.tickell.us  # Should NOT show Cloudflare headers (direct)
 curl -I https://scep.id.tickell.us  # Should NOT show Cloudflare headers (direct)
+
+# Test rootless container port binding
+sysctl net.ipv4.ip_unprivileged_port_start  # Should show 80
+python3 -c "import socket; s = socket.socket(); s.bind(('', 80)); print('Port 80 available'); s.close()"
+```
 ```
 
 ### Podman-Compose Management
