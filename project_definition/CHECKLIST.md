@@ -1,36 +1,37 @@
-# CHECKLIST.md — Function‑First Delivery (Read Me, Copilot)
-> **Intent:** Prioritize **identity experience** first, then platform mechanics.
-> **Invariant:** Single IdP hostname **`id.tickell.us`** with **split‑DNS**. **Kerberos SPN:** `HTTP/id.tickell.us`. **Realm:** `HOME.TICKELL.US`.
-> **Anti‑pattern:** ⚠️ Do **not** introduce Kubernetes/Helm/OKD in Phase 1. Do **not** invent `id.home.tickell.us`.
+# CHECKLIST.md — Function-First Delivery (Read Me, Copilot)
+> **Intent:** Prioritize **identity experience** first, then platform mechanics.  
+> **Invariant:** Single IdP hostname **`id.tickell.us`** with **split-DNS**. **Kerberos SPN:** `HTTP/id.tickell.us`. **Realm:** `HOME.TICKELL.US`.  
+> **Absolute Rule:** 🚫 **Never expose any host under `home.tickell.us` to the public internet.**  
+> **Anti-pattern:** ⚠️ Do **not** introduce Kubernetes/Helm/OKD in Phase 1. Do **not** invent `id.home.tickell.us`.
 
 ---
 
-## 📋 Phase 1 — Identity Foundation (Podman‑based)  **← Start here**
-**Goal:** Rock‑solid SSO on Podman for a 5‑person Apple‑first family.
+## 📋 Phase 1 — Identity Foundation (Podman-based)  **← Start here**
+**Goal:** Rock-solid SSO on Podman for a 5-person Apple-first family.
 
 ### A1. Samba AD sanity (already provisioned)
 - [ ] DNS clients → `rio.home.tickell.us` / `donga.home.tickell.us`
 - [ ] Kerberos: `kinit administrator@HOME.TICKELL.US` / `klist` ok
 - [ ] Time/NTP in sync
 
-### A2. Keycloak @ `https://id.tickell.us`  (split‑DNS + Cloudflare WAF external)
-
-📋 **[Detailed Step-by-Step Guide: A2_KEYCLOAK_DEPLOYMENT.md](A2_KEYCLOAK_DEPLOYMENT.md)**
-
-**Quick Progress Summary:**
-- [ ] **Infrastructure:** Podman network, volumes, PostgreSQL database
-- [ ] **Caddy:** Reverse proxy serves Keycloak at **`id.tickell.us`**
-- [ ] **Cloudflare:** **Proxy ON**, Cache **Bypass**, Rocket Loader **OFF**
-- [ ] **Keycloak:** Realm `tickell` created (email‑as‑username ON, self‑registration OFF)
-- [ ] **LDAP:** Federation (READ_ONLY) → `ldaps://rio.home.tickell.us:636` (failover `donga`)
-- [ ] **Kerberos:** SPN **`HTTP/id.tickell.us`** created, keytab exported/uploaded
-- [ ] **Browser SPNEGO:** Internal browsers configured for `id.tickell.us`
+### A2. Keycloak @ `https://id.tickell.us`  (split-DNS + Cloudflare WAF external)
+- [ ] Caddy reverse proxy on `idealx` serves Keycloak at **`id.tickell.us`**
+- [ ] Cloudflare: **Proxy ON** externally; Cache **Bypass**, Rocket Loader **OFF**
+- [ ] Keycloak realm `tickell` created (email-as-username ON, self-registration OFF)
+- [ ] LDAP federation (READ_ONLY) → `ldaps://rio.home.tickell.us:636` (failover `donga`)
+- [ ] Kerberos: add SPN **`HTTP/id.tickell.us`**, export/upload keytab
+- [ ] Browsers (internal) allow SPNEGO to `id.tickell.us`
 
 ### A3. **MDM (ManageEngine) — Critical to Phase 1**
-- [ ] APNs uploaded; enroll Macs/iPhones (User‑Approved MDM for Macs)
+- [ ] APNs uploaded; enroll Macs/iPhones (User-Approved MDM for Macs)
 - [ ] **Kerberos SSO Extension** payload: Realm `HOME.TICKELL.US`; Domains `.home.tickell.us`; KDCs `rio`,`donga`
-- [ ] Wi‑Fi (EAP‑TLS), VPN (on‑demand), SCEP/cert profiles deployed
-- [ ] Confirm Macs/iOS obtain tickets automatically
+- [ ] Wi-Fi (EAP-TLS), VPN (on-demand), SCEP/cert profiles deployed
+- [ ] **MDM/SCEP endpoints bypass Cloudflare proxy:**
+  - Public hostnames: `mdm.id.tickell.us`, `scep.id.tickell.us` → **DNS Only (grey cloud)** in Cloudflare.
+  - Split-DNS: LAN resolves to internal IPs; remote resolves to public IPs.
+  - 🚫 **Never expose `*.home.tickell.us` externally.**
+  - Verify enrollment & certificate issuance complete without TLS errors.
+- [ ] Confirm Macs/iOS obtain Kerberos tickets automatically
 
 ### A4. First apps behind SSO (Podman)
 - [ ] Nextcloud OIDC (issuer `https://id.tickell.us/realms/tickell`)
@@ -42,11 +43,10 @@
 **Phase 1 Definition of Done**
 - [ ] **Internal** app login is silent (SPNEGO); **External** login works with passkeys/MFA
 - [ ] **Core apps** working with SSO on Podman
-- [ ] **Split‑DNS** for `id.tickell.us` proven
+- [ ] **Split-DNS** for `id.tickell.us` proven
 - [ ] **No** `id.home.tickell.us` anywhere
-
-**Future Enhancements (Post-Phase 1)**
-- [ ] **SSSD Sudo Integration**: Add `sudo` service to SSSD config for centralized sudo rules via Samba AD
+- [ ] **MDM/SCEP** endpoints validated (bypass Cloudflare)
+- [ ] **No host under `home.tickell.us` publicly reachable**
 
 ---
 
@@ -56,7 +56,7 @@
 ### B1. OKD install
 - [ ] OKD SNO (or compact) on Proxmox; default storage class present
 - [ ] DNS: `api.okd.tickell.us`, `console.okd.tickell.us`, `*.apps.okd.tickell.us`
-- [ ] cert‑manager via DNS‑01 (Cloudflare)
+- [ ] cert-manager via DNS-01 (Cloudflare)
 
 ### B2. OAuth via Keycloak
 - [ ] Configure OpenShift OAuth: OIDC to `https://id.tickell.us/realms/tickell`
@@ -64,12 +64,12 @@
 
 ### B3. GitOps (Argo CD)
 - [ ] `family-gitops` repo: `clusters/okd-home`, `platform/*`, `apps/*`
-- [ ] Root **app‑of‑apps** healthy; platform (cert‑manager, External Secrets) synced
+- [ ] Root **app-of-apps** healthy; platform (cert-manager, External Secrets) synced
 
 ### B4. CI/CD (GitHub Actions → GHCR)
 - [ ] Each app builds/pushes `stable-<shortsha>` to GHCR
 
-### B5. Migrate apps one‑by‑one
+### B5. Migrate apps one-by-one
 - [ ] Nextcloud manifests synced; DNS cutover to Route
 - [ ] Vaultwarden manifests synced
 - [ ] Grafana manifests synced
@@ -79,6 +79,7 @@
 - [ ] OKD OAuth→Keycloak ok; Argo syncing from `family-gitops`
 - [ ] Apps live under `*.apps.okd.tickell.us`
 - [ ] Full GitOps loop operational (CI→image, Argo→deploy)
+- [ ] `home.tickell.us` remains private-only
 
 ---
 
@@ -100,7 +101,8 @@
 ---
 
 ## 🧠 Copilot Anchors (Put these in READMEs)
-- **Single hostname:** Use only `id.tickell.us` for IdP (split‑DNS).  
+- **Single hostname:** Use only `id.tickell.us` for IdP (split-DNS).  
 - **Kerberos:** SPN `HTTP/id.tickell.us`. Internal path only; external is web login via Cloudflare.  
-- **Phase boundaries:** Do not propose Kubernetes in Phase 1. Phase 1 = Podman, Phase 2 = OKD.  
+- **MDM/SCEP:** Use `mdm.id.tickell.us` and `scep.id.tickell.us` (DNS Only). Never expose `home.tickell.us`.  
+- **Phase boundaries:** Phase 1 = Podman; Phase 2 = OKD.  
 - **MDM is Phase 1 critical:** Kerberos SSO Extension must be deployed for silent login on Apple devices.

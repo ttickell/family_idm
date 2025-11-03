@@ -32,6 +32,37 @@ id.tickell.us {
     respond /health 200
 }
 
+# MDM endpoint (direct access, bypasses Cloudflare WAF)
+mdm.id.tickell.us {
+    # Use same wildcard certificate
+    tls /etc/ssl/certs/id.tickell.us.crt /etc/ssl/private/id.tickell.us.key
+    
+    reverse_proxy keycloak-main:8080 {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+        header_up X-Real-IP {remote}
+    }
+    
+    # Minimal security headers for MDM compatibility
+    header {
+        X-Content-Type-Options nosniff
+    }
+    
+    # Separate logging for MDM traffic
+    log {
+        output file /data/logs/mdm.log
+        format json {
+            time_format "2006-01-02T15:04:05Z07:00"
+            message_key "msg"
+        }
+        level INFO
+    }
+    
+    # Health check for MDM endpoint
+    respond /mdm/health 200
+}
+
 # SCEP/API endpoint (direct access, bypasses Cloudflare WAF)
 scep.id.tickell.us {
     # Use same wildcard certificate

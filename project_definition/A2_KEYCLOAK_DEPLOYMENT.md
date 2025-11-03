@@ -151,6 +151,37 @@ id.tickell.us {
     respond /health 200
 }
 
+# MDM endpoint (direct access, bypasses Cloudflare WAF)
+mdm.id.tickell.us {
+    # Use same wildcard certificate
+    tls /etc/ssl/certs/id.tickell.us.crt /etc/ssl/private/id.tickell.us.key
+    
+    reverse_proxy keycloak-main:8080 {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+        header_up X-Real-IP {remote}
+    }
+    
+    # Minimal security headers for MDM compatibility
+    header {
+        X-Content-Type-Options nosniff
+    }
+    
+    # Separate logging for MDM traffic
+    log {
+        output file /data/logs/mdm.log
+        format json {
+            time_format "2006-01-02T15:04:05Z07:00"
+            message_key "msg"
+        }
+        level INFO
+    }
+    
+    # Health check for MDM endpoint
+    respond /mdm/health 200
+}
+
 # SCEP/API endpoint (direct access, bypasses Cloudflare WAF)
 scep.id.tickell.us {
     # Use same wildcard certificate
@@ -189,10 +220,11 @@ scep.id.tickell.us {
 - [ ] Test certificate validity: `openssl x509 -in certs/id.tickell.us.crt -text -noout`
 - [ ] Verify wildcard SAN: `openssl x509 -in certs/id.tickell.us.crt -text -noout | grep -A2 "Subject Alternative Name"`
 
-### 2.4 Configure SCEP/API Endpoint (Optional for MDM)
-- [ ] Plan SCEP subdomain for device management: `scep.id.tickell.us`
-- [ ] Note: Wildcard certificate covers both `id.tickell.us` and `scep.id.tickell.us`
-- [ ] SCEP endpoint will bypass Cloudflare WAF for direct device access
+### 2.4 Configure MDM/SCEP Endpoints (Required for ManageEngine MDM)
+- [ ] Plan MDM and SCEP subdomains for device management: `mdm.id.tickell.us` and `scep.id.tickell.us`
+- [ ] Note: Wildcard certificate covers `id.tickell.us`, `mdm.id.tickell.us`, and `scep.id.tickell.us`
+- [ ] Both MDM and SCEP endpoints will bypass Cloudflare WAF for direct device access
+- [ ] 🚫 Never expose any `*.home.tickell.us` hosts to public internet
 
 ---
 
@@ -200,8 +232,10 @@ scep.id.tickell.us {
 
 ### 3.1 DNS Configuration
 - [ ] Add DNS A record: `id.tickell.us` → `idealx` public IP in Cloudflare
+- [ ] Add DNS A record: `mdm.id.tickell.us` → `idealx` public IP in Cloudflare
 - [ ] Add DNS A record: `scep.id.tickell.us` → `idealx` public IP in Cloudflare
 - [ ] Verify external DNS resolution: `dig id.tickell.us @8.8.8.8`
+- [ ] Verify MDM DNS resolution: `dig mdm.id.tickell.us @8.8.8.8`
 - [ ] Verify SCEP DNS resolution: `dig scep.id.tickell.us @8.8.8.8`
 
 ### 3.2 Cloudflare Settings
@@ -210,9 +244,12 @@ scep.id.tickell.us {
   - [ ] SSL/TLS: **Full (strict)** mode
   - [ ] Cache Level: BYPASS for all requests
   - [ ] Security Level: Medium
+- [ ] **MDM Service** (`mdm.id.tickell.us`):
+  - [ ] **DNS Only** (gray cloud) ⚪ - No proxy, direct access
+  - [ ] Used for ManageEngine MDM device enrollment and management
 - [ ] **SCEP/API Service** (`scep.id.tickell.us`):
   - [ ] **DNS Only** (gray cloud) ⚪ - No proxy, direct access
-  - [ ] Used for device management and API calls that need to bypass WAF
+  - [ ] Used for device certificate enrollment and API calls that need to bypass WAF
 
 ---
 
@@ -228,8 +265,10 @@ scep.id.tickell.us {
 - [ ] Test database: `podman-compose exec postgres psql -U keycloak -d keycloak -c '\l'`
 - [ ] Test Keycloak startup: `podman-compose logs keycloak | grep "Keycloak.*started"`
 - [ ] Test main endpoint: `curl -I https://id.tickell.us/health` (should return 200)
+- [ ] Test MDM endpoint: `curl -I https://mdm.id.tickell.us/mdm/health` (should return 200)
 - [ ] Test SCEP endpoint: `curl -I https://scep.id.tickell.us/scep/health` (should return 200)
 - [ ] Verify certificate: `openssl s_client -connect id.tickell.us:443 -servername id.tickell.us`
+- [ ] Verify MDM certificate: `openssl s_client -connect mdm.id.tickell.us:443 -servername mdm.id.tickell.us`
 - [ ] Verify SCEP certificate: `openssl s_client -connect scep.id.tickell.us:443 -servername scep.id.tickell.us`
 
 ### 4.3 Access Admin Console
@@ -359,6 +398,7 @@ scep.id.tickell.us {
 ```bash
 # Test DNS resolution
 dig id.tickell.us @rio.home.tickell.us
+dig mdm.id.tickell.us @rio.home.tickell.us
 dig scep.id.tickell.us @rio.home.tickell.us
 
 # Test Kerberos ticket
@@ -369,10 +409,12 @@ ldapsearch -H ldaps://rio.home.tickell.us:636 -D "CN=Keycloak Bind,CN=Users,DC=h
 
 # Test HTTPS access with internal CA
 curl -I https://id.tickell.us
+curl -I https://mdm.id.tickell.us
 curl -I https://scep.id.tickell.us
 
-# Verify certificate chain for both endpoints
+# Verify certificate chain for all endpoints
 openssl s_client -connect id.tickell.us:443 -servername id.tickell.us -showcerts
+openssl s_client -connect mdm.id.tickell.us:443 -servername mdm.id.tickell.us -showcerts
 openssl s_client -connect scep.id.tickell.us:443 -servername scep.id.tickell.us -showcerts
 
 # Test certificate validity and wildcard SAN
@@ -380,6 +422,7 @@ openssl x509 -in certs/id.tickell.us.crt -text -noout | grep -A2 "Subject Altern
 
 # Test Cloudflare routing
 curl -I https://id.tickell.us -H "CF-Connecting-IP: 1.2.3.4"  # Should show Cloudflare headers
+curl -I https://mdm.id.tickell.us  # Should NOT show Cloudflare headers (direct)
 curl -I https://scep.id.tickell.us  # Should NOT show Cloudflare headers (direct)
 ```
 
