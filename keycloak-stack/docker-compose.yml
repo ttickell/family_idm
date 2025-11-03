@@ -34,7 +34,7 @@ services:
     command: ["start", "--truststore-paths=/opt/keycloak/conf/truststores/tickell-us-ca.crt"]
     volumes:
       - keycloak-data:/opt/keycloak/data
-      - ./config/keycloak:/opt/keycloak/conf
+      - ./config/keycloak:/opt/keycloak/conf:z
     networks:
       - keycloak-net
     restart: unless-stopped
