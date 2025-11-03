@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:15-alpine
+    image: docker.io/library/postgres:15-alpine
     container_name: keycloak-postgres
     environment:
       POSTGRES_DB: keycloak
@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
 
   caddy:
-    image: caddy:2-alpine
+    image: docker.io/library/caddy:2-alpine
     container_name: caddy-proxy
     ports:
       - "80:80"
