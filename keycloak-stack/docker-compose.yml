@@ -46,9 +46,9 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./certs/id.tickell.us.crt:/etc/ssl/certs/id.tickell.us.crt:ro
-      - ./certs/id.tickell.us.key:/etc/ssl/private/id.tickell.us.key:ro
+      - ./config/Caddyfile:/etc/caddy/Caddyfile:ro,z
+      - ./certs/id.tickell.us.crt:/etc/ssl/certs/id.tickell.us.crt:ro,z
+      - ./certs/id.tickell.us.key:/etc/ssl/private/id.tickell.us.key:ro,z
       - caddy-data:/data
       - caddy-config:/config
     networks:
