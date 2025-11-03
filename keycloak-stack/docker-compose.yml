@@ -27,11 +27,10 @@ services:
       KC_HOSTNAME: id.tickell.us
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
-      KC_PROXY: edge
       KC_PROXY_HEADERS: "xforwarded"
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
-    command: ["start", "--truststore-paths=/opt/keycloak/conf/truststores"]
+    command: ["start"]
     volumes:
       - keycloak-data:/opt/keycloak/data
       - ./config/keycloak:/opt/keycloak/conf
