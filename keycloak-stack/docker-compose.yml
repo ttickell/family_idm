@@ -26,7 +26,9 @@ services:
       KC_DB_PASSWORD: ${KC_DB_PASSWORD}
       KC_HOSTNAME: id.tickell.us
       KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
       KC_PROXY: edge
+      KC_PROXY_HEADERS: "xforwarded"
       KEYCLOAK_ADMIN: ${KC_ADMIN_USER}
       KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
     command: ["start"]
