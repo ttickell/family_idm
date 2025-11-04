@@ -18,9 +18,14 @@
 - [x] Caddy reverse proxy on `idealx` serves Keycloak at **`id.tickell.us`**
 - [x] Cloudflare: **Proxy ON** externally; Cache **Bypass**, Rocket Loader **OFF**
 - [x] Keycloak realm `tickell` created (email-as-username ON, self-registration OFF)
-- [x] LDAP federation (READ_ONLY) → `ldaps://rio.home.tickell.us:636` (**UPGRADED to LDAPS with certificate validation**)
-- [ ] Kerberos: add SPN **`HTTP/id.tickell.us`**, export/upload keytab
-- [ ] Browsers (internal) allow SPNEGO to `id.tickell.us`
+- [x] LDAP federation (WRITABLE) → `ldaps://rio.home.tickell.us:636` (**UPGRADED to LDAPS with certificate validation**)
+- [x] **LDAP+Kerberos Integration**: Single federation with built-in Kerberos support (cleaner than dual federation)
+- [x] **Domain Functional Level 2016**: Upgraded from 2008 R2 for AES encryption compatibility
+- [x] Kerberos: SPN **`HTTP/id.tickell.us`** added, AES256/AES128 keytab exported/uploaded
+- [x] **SPNEGO Authentication**: Silent SSO working from domain-joined machines
+- [x] **Account Operators**: Service account permissions for self-service password changes
+- [x] **Family Browser Flow**: Kerberos ALTERNATIVE + Cookie + Username/Password fallback
+- [x] Browsers (internal) allow SPNEGO to `id.tickell.us` - **WORKING**
 
 ### A3. **MDM (ManageEngine) — Critical to Phase 1**
 - [ ] APNs uploaded; enroll Macs/iPhones (User-Approved MDM for Macs)
@@ -33,11 +38,20 @@
   - Verify enrollment & certificate issuance complete without TLS errors.
 - [ ] Confirm Macs/iOS obtain Kerberos tickets automatically
 
-### A4. First apps behind SSO (Podman)
-- [ ] Nextcloud OIDC (issuer `https://id.tickell.us/realms/tickell`)
-- [ ] Vaultwarden OIDC
-- [ ] Grafana OIDC
-- [ ] Home Assistant OIDC
+### A4. First apps behind SSO (Starting with Synology NAS)
+- [ ] **Synology DSM OIDC Integration**
+  - [ ] Create OIDC client in Keycloak: `synology-dsm`
+  - [ ] Configure redirect URIs for NAS hostname
+  - [ ] Set up client credentials (ID/secret)
+  - [ ] Configure DSM SSO Client settings
+  - [ ] Test internal SPNEGO (silent SSO)
+  - [ ] Test external login flow (Keycloak form)
+  - [ ] Verify account linking with existing domain users
+- [ ] Additional apps (after Synology success):
+  - [ ] Nextcloud OIDC (issuer `https://id.tickell.us/realms/tickell`)
+  - [ ] Vaultwarden OIDC
+  - [ ] Grafana OIDC
+  - [ ] Home Assistant OIDC
 - [ ] Backups: Keycloak DB + realm export; app data dumps
 
 ### A5. Certificate Hardening
