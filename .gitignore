@@ -39,9 +39,4 @@ Thumbs.db
 *.tmp
 *.temp
 *.log
-
-# Podman/Docker volumes and data
-postgres-data/
-keycloak-data/
-caddy-data/
-caddy-config/
+debug/
