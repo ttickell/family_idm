@@ -52,6 +52,7 @@ services:
       - ./config/Caddyfile:/etc/caddy/Caddyfile:ro,z
       - ./certs/id.tickell.us.crt:/etc/ssl/certs/id.tickell.us.crt:ro,z
       - ./certs/id.tickell.us.key:/etc/ssl/private/id.tickell.us.key:ro,z
+      - ../caddy-logs:/data/logs
       - caddy-data:/data
       - caddy-config:/config
     networks:
