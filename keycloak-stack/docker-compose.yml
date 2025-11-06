@@ -1,5 +1,5 @@
-version: '3.8'
 
+version: '3.8'
 services:
   postgres:
     image: docker.io/library/postgres:15-alpine
@@ -68,14 +68,13 @@ services:
       ADMIN_TOKEN: "${VW_ADMIN_TOKEN}"
       ROCKET_PORT: 8082
       SSO_ENABLED: "true"
+      SSO_ONLY: "false"
       SSO_AUTHORITY: "https://id.tickell.us/realms/tickell"
       SSO_CLIENT_ID: "vaultwarden"
       SSO_CLIENT_SECRET: "${VW_CLIENT_SECRET}"
-      #SSO_SCOPES: "openid email profile"
-      SSO_DISPLAY_NAME: "Family SSO"
-      SSO_ONLY: "false"
+      SSO_SCOPES: "profile email offline_access"
+      SSO_PKCE: "true"
       LOG_LEVEL: "${VW_LOG_LEVEL}"
-      SSO_DEBUG_TOKENS: "true"
     expose:
       - "8082"
     volumes:
