@@ -20,6 +20,13 @@ vaultwarden.tickell.us {
         header_up X-Forwarded-Host {host}
         header_up X-Real-IP {remote}
     }
+    # Remove X-Frame-Options for SSO/2FA callback endpoints
+    @noFrameOptions {
+        path /sso/* /identity/connector/callback* /2fa/*
+    }
+    header @noFrameOptions {
+        -X-Frame-Options
+    }
     header {
         X-Frame-Options SAMEORIGIN
         X-Content-Type-Options nosniff
