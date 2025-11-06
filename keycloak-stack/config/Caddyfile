@@ -1,15 +1,34 @@
+# Vaultwarden dedicated subdomain
+vaultwarden.tickell.us {
+    tls /etc/ssl/certs/id.tickell.us.crt /etc/ssl/private/id.tickell.us.key
+    reverse_proxy vaultwarden:8082 {
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+        header_up X-Real-IP {remote}
+    }
+    header {
+        X-Frame-Options SAMEORIGIN
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-XSS-Protection "1; mode=block"
+    }
+    log {
+        output file /data/logs/vaultwarden-access.log
+        format json {
+            time_format "2006-01-02T15:04:05Z07:00"
+            message_key "msg"
+        }
+        level INFO
+    }
+    respond /health 200
+}
 # Main Keycloak service (behind Cloudflare WAF)
 id.tickell.us {
     # Use internal CA certificate
     tls /etc/ssl/certs/id.tickell.us.crt /etc/ssl/private/id.tickell.us.key
     
-    handle_path /vaultwarden/* {
-        reverse_proxy vaultwarden:8082 {
-            header_up X-Forwarded-For {remote}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
-            header_up X-Real-IP {remote}
-        }
+https://id.tickell.us/vaultwarden/
     }
     reverse_proxy keycloak-main:8080 {
         header_up X-Forwarded-For {remote}
