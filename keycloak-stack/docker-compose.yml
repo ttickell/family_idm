@@ -64,7 +64,7 @@ services:
     restart: unless-stopped
     environment:
       DOMAIN: "https://vaultwarden.tickell.us"
-      SIGNUPS_ALLOWED: "false"
+      #SIGNUPS_ALLOWED: "false"
       ADMIN_TOKEN: "${VW_ADMIN_TOKEN}"
       ROCKET_PORT: 8082
       ENABLE_OIDC: "true"
