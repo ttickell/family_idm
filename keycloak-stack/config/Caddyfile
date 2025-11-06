@@ -35,16 +35,14 @@ id.tickell.us {
     }
     # Use internal CA certificate
     tls /etc/ssl/certs/id.tickell.us.crt /etc/ssl/private/id.tickell.us.key
-    
-https://id.tickell.us/vaultwarden/
-    }
+
     reverse_proxy keycloak-main:8080 {
         header_up X-Forwarded-For {remote}
         header_up X-Forwarded-Proto {scheme}
         header_up X-Forwarded-Host {host}
         header_up X-Real-IP {remote}
     }
-    
+
     # Security headers for web interface
     header {
         X-Frame-Options SAMEORIGIN
@@ -52,7 +50,7 @@ https://id.tickell.us/vaultwarden/
         Referrer-Policy strict-origin-when-cross-origin
         X-XSS-Protection "1; mode=block"
     }
-    
+
     # Logging for troubleshooting
     log {
         output file /data/logs/access.log
@@ -62,7 +60,7 @@ https://id.tickell.us/vaultwarden/
         }
         level INFO
     }
-    
+
     # Health check endpoint
     respond /health 200
 }
