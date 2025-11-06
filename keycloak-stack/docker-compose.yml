@@ -71,10 +71,11 @@ services:
       SSO_AUTHORITY: "https://id.tickell.us/realms/tickell"
       SSO_CLIENT_ID: "vaultwarden"
       SSO_CLIENT_SECRET: "${VW_CLIENT_SECRET}"
-      SSO_SCOPES: "openid email profile"
+      #SSO_SCOPES: "openid email profile"
       SSO_DISPLAY_NAME: "Family SSO"
       SSO_ONLY: "false"
       LOG_LEVEL: "${VW_LOG_LEVEL}"
+      SSO_DEBUG_TOKENS: "true"
     expose:
       - "8082"
     volumes:
