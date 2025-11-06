@@ -79,6 +79,8 @@ services:
       OIDC_SCOPES: "openid email profile"
       OIDC_DISPLAY_NAME: "Family SSO"
       OIDC_AUTO_REDIRECT: "true"
+    expose:
+      - "8082"
     volumes:
       - vaultwarden-data:/data
     networks:
