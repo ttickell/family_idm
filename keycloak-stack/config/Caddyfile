@@ -3,6 +3,14 @@ id.tickell.us {
     # Use internal CA certificate
     tls /etc/ssl/certs/id.tickell.us.crt /etc/ssl/private/id.tickell.us.key
     
+    handle_path /vaultwarden/* {
+        reverse_proxy vaultwarden:8082 {
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up X-Real-IP {remote}
+        }
+    }
     reverse_proxy keycloak-main:8080 {
         header_up X-Forwarded-For {remote}
         header_up X-Forwarded-Proto {scheme}
