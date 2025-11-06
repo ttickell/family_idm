@@ -75,7 +75,7 @@ services:
       OIDC_USERINFO_URL: "https://id.tickell.us/realms/tickell/protocol/openid-connect/userinfo"
       OIDC_LOGOUT_URL: "https://id.tickell.us/realms/tickell/protocol/openid-connect/logout"
       OIDC_REDIRECT_URI: "https://vaultwarden.tickell.us/oidc/callback"
-      OIDC_SCOPES: "openid email profile"
+      OIDC_SCOPE: "openid email profile"
       OIDC_DISPLAY_NAME: "Family SSO"
       OIDC_AUTO_REDIRECT: "true"
     expose:
