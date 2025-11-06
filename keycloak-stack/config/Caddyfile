@@ -1,3 +1,16 @@
+# Redirect HTTP to HTTPS for all domains
+http://id.tickell.us {
+    redir https://id.tickell.us{uri} permanent
+}
+http://vaultwarden.tickell.us {
+    redir https://vaultwarden.tickell.us{uri} permanent
+}
+http://mdm.id.tickell.us {
+    redir https://mdm.id.tickell.us{uri} permanent
+}
+http://scep.id.tickell.us {
+    redir https://scep.id.tickell.us{uri} permanent
+}
 # Vaultwarden dedicated subdomain
 vaultwarden.tickell.us {
     tls /etc/ssl/certs/id.tickell.us.crt /etc/ssl/private/id.tickell.us.key
