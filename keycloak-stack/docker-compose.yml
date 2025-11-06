@@ -78,10 +78,13 @@ services:
       OIDC_SCOPE: "openid email profile"
       OIDC_DISPLAY_NAME: "Family SSO"
       OIDC_AUTO_REDIRECT: "true"
+      LOG_LEVEL: "${VW_LOG_LEVEL}"
     expose:
       - "8082"
     volumes:
       - vaultwarden-data:/data
+      - ./certs/tickell-us-ca.crt:/usr/local/share/ca-certificates/tickell-us-ca.crt:ro
+    command: ["sh", "-c", "update-ca-certificates && /vaultwarden"]
     networks:
       - keycloak-net
 
