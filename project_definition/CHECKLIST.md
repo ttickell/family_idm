@@ -1,7 +1,7 @@
 # CHECKLIST.md — Function-First Delivery (Read Me, Copilot)
 > **Intent:** Prioritize **identity experience** first, then platform mechanics.  
 > **Invariant:** Single IdP hostname **`id.tickell.us`** with **split-DNS**. **Kerberos SPN:** `HTTP/id.tickell.us`. **Realm:** `HOME.TICKELL.US`.  
-> **Absolute Rule:** 🚫 **Never expose any host under `home.tickell.us` to the public internet.**  
+> **Absolute Rule:** 🚫 **Never expose any host under `home.tickell.us` to the public internet (internal/LAN-only testing is fine).**  
 > **Anti-pattern:** ⚠️ Do **not** introduce Kubernetes/Helm/OKD in Phase 1. Do **not** invent `id.home.tickell.us`.
 
 ---

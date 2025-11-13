@@ -15,7 +15,7 @@
 - **MDM/SCEP endpoints:** Must **not** be proxied by Cloudflare.  
   - Public names: `mdm.id.tickell.us`, `scep.id.tickell.us` (**DNS Only**, grey cloud).  
   - Split-DNS: LAN resolves to local IPs, remote resolves to public IPs.  
-  - 🚫 **Never expose any host under `home.tickell.us` to the internet.**  
+  - 🚫 **Never expose any host under `home.tickell.us` to the public internet** (internal/LAN-only use is fine).  
   - Apple devices must reach these endpoints directly for enrollment & SCEP.
 - **MDM is essential in Phase 1:** Deploy Kerberos SSO Extension via ManageEngine for Apple devices.
 
